@@ -5,29 +5,45 @@ use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::{DisplayBuild, Surface};
 
 
-struct AppState<'a> {
-	board_data: Vec<bool>,
-	board_rows: Vec<&'a mut [bool]>, // mutable slice for each row based on board_data.
-	// mutable slice of mutable slice of bool, based on board_data. Emulate a 2D array.
-	board: &'a mut [&'a mut [bool]],
-	board_size: (usize, usize),
+struct Board {
+	width: usize,
+	height: usize,
+	data: Vec<bool>,
 }
 
-impl<'a> AppState<'a> {
-	fn new() -> AppState<'a> {
+impl Board {
+	fn new( width: usize, height: usize) -> Board {
+		Board {
+			width: width, 
+			height: height,
+			data: vec![true; width* height],
+		}
+	}
+	
+	fn get(&self, x: usize, y: usize) -> bool {
+		assert!( x <= self.width  &&  y <= self.height );
+		self.data[ y * self.width + x ]
+	}
+	
+	fn set(&mut self, x: usize, y: usize, new_value: bool) {
+		assert!( x <= self.width  &&  y <= self.height );
+		self.data[ y * self.width + x ] = new_value;
+	}
+	
+}
+
+
+struct AppState {
+	board: Board,
+}
+
+impl AppState {
+	fn new() -> AppState {
 		const BOARD_WIDTH: usize = 8;
 		const BOARD_HEIGHT: usize = 8;
-		let mut raw_board_data = vec![true; BOARD_WIDTH * BOARD_HEIGHT];
-		// Notes an intermediate variable is required to force conversion from FromIterator<&mut [bool]> to Vec<&mut [bool]>.
-		// This allows conversion to a slice of slice, emulating a 2D array.
-		let mut grid_board_of_vec: Vec<&'a mut [bool]> = raw_board_data.as_mut_slice().chunks_mut(BOARD_WIDTH).collect();
-		let mut grid_board: &mut [&mut [bool]] = grid_board_of_vec.as_mut_slice();
-
+		
 		AppState {
-			board_data: raw_board_data,
-			board_rows: grid_board_of_vec,
-			board: grid_board,
-			board_size: (BOARD_WIDTH, BOARD_HEIGHT)
+			board: Board::new(BOARD_WIDTH, BOARD_HEIGHT),
 		}
 	}
 }
@@ -152,11 +168,11 @@ fn main() {
 				// We can use `Element`s to instantiate any kind of widget we like.
 				// The `Element` does all of the positioning and sizing work for us.
 				// Here, we use the `Element` to `set` a `Toggle` widget for us.
-				let toggle = widget::Toggle::new(app_state.board[col][row])
+				let toggle = widget::Toggle::new(app_state.board.get(col, row))
 					.rgba(r, g, b, a)
 					.border(1.0);
 				if let Some(new_value) = elem.set(toggle, ui).last() {
-					app_state.board[col][row] = new_value;
+					app_state.board.set(col, row, new_value);
 				}
 			}
 
