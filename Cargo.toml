@@ -1,0 +1,9 @@
+[package]
+name = "conrod_game_of_life"
+version = "0.1.0"
+authors = ["Baptiste Lepilleur <baptiste.lepilleur@gmail.com>"]
+
+[dependencies]
+conrod = { version = "0.52.0", features = ["glium", "winit"] }
+glium="0.16.0"
+winit="0.5.9"  
