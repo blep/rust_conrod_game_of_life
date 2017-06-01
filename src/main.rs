@@ -5,21 +5,29 @@ use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::{DisplayBuild, Surface};
 
 
-struct AppState {
-	board: [[bool; 8]; 8],
+struct AppState<'a> {
+	board_data: Vec<bool>,
+	board_rows: Vec<&'a mut [bool]>, // mutable slice for each row based on board_data.
+	// mutable slice of mutable slice of bool, based on board_data. Emulate a 2D array.
+	board: &'a mut [&'a mut [bool]],
+	board_size: (usize, usize),
 }
 
-impl AppState {
-	fn new() -> AppState {
+impl<'a> AppState<'a> {
+	fn new() -> AppState<'a> {
+		const BOARD_WIDTH: usize = 8;
+		const BOARD_HEIGHT: usize = 8;
+		let mut raw_board_data = vec![true; BOARD_WIDTH * BOARD_HEIGHT];
+		// Notes an intermediate variable is required to force conversion from FromIterator<&mut [bool]> to Vec<&mut [bool]>.
+		// This allows conversion to a slice of slice, emulating a 2D array.
+		let mut grid_board_of_vec: Vec<&'a mut [bool]> = raw_board_data.as_mut_slice().chunks_mut(BOARD_WIDTH).collect();
+		let mut grid_board: &mut [&mut [bool]] = grid_board_of_vec.as_mut_slice();
+
 		AppState {
-			board: [ [true, true, true, true, true, true, true, true],
-						   [true, false, false, false, false, false, false, true],
-						   [true, false, true, false, true, true, true, true],
-						   [true, false, true, false, true, true, true, true],
-						   [true, false, false, false, true, true, true, true],
-						   [true, true, true, true, true, true, true, true],
-						   [true, true, false, true, false, false, false, true],
-						   [true, true, true, true, true, true, true, true] ],
+			board_data: raw_board_data,
+			board_rows: grid_board_of_vec,
+			board: grid_board,
+			board_size: (BOARD_WIDTH, BOARD_HEIGHT)
 		}
 	}
 }
