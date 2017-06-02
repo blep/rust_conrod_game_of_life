@@ -203,6 +203,7 @@ fn main() {
 		
 		if app_state.simulating {
 			app_state.board.advance_simulation();
+			ui_needs_update = true;
 		}
 
 		// Instantiate all widgets in the GUI.
