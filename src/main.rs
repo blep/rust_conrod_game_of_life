@@ -24,21 +24,22 @@ fn conway_borns() -> Vec<usize> {
 	vec![3]
 }
 
+#[derive(Debug)]
 struct Board {
 	width: usize,
 	height: usize,
 	data: Vec<bool>,
-	survives_by_count: [bool; 9], // note that the center cell is included in the count, so index is #neighbor+1
-	borns_by_count: [bool; 8],
+	survives_by_count: [bool; 10], // note that the center cell is included in the count, so index is #neighbor+1
+	borns_by_count: [bool; 9],
 }
 
 impl Board {
 	fn new( width: usize, height: usize, survives: &Vec<usize>, borns: &Vec<usize> ) -> Board {
-		let mut survives_by_count = [false; 9];
+		let mut survives_by_count = [false; 10];
 		for count in survives.iter() {
 			survives_by_count[count+1] = true; // center cell is included in the count, hence the +1
 		}
-		let mut borns_by_count = [false; 8];
+		let mut borns_by_count = [false; 9];
 		for count in borns.iter() {
 			borns_by_count[count+0] = true;
 		}
@@ -63,13 +64,16 @@ impl Board {
 	}
 	
 	fn advance_simulation(&mut self) {
+//		println!("Begin simulation board={:?}", self);
 		let mut next_board: Vec<bool> = Vec::with_capacity( self.data.len() );
-		for y_test in 0..(self.height-1) {
-			for x_test in 0..(self.width-1) {
-				next_board[x_test + y_test * self.width] = self.cell_next_state(x_test, y_test);
+		for y_test in 0..self.height {
+			for x_test in 0..self.width {
+				next_board.push( self.cell_next_state(x_test, y_test) );
 			}
 		}
+		assert!( next_board.len() == self.data.len() );
 		self.data = next_board;
+//		println!("End simulation board={:?}", self);
 	}
 	
 	fn cell_next_state(&self, x: usize, y: usize) -> bool {
@@ -89,13 +93,13 @@ impl Board {
 		let Wrapping(x_minus_1) = Wrapping(x) - Wrapping(1);
 		let Wrapping(y_minus_1) = Wrapping(y) - Wrapping(1);
 		self.cell_alive(x_minus_1, y_minus_1) + self.cell_alive(x, y_minus_1) + self.cell_alive(x+1, y_minus_1) + 
-		self.cell_alive(x_minus_1, y) + self.cell_alive(x, y) + self.cell_alive(x+1, y) +
+		self.cell_alive(x_minus_1, y) + self.cell_alive(x+1, y) +
 		self.cell_alive(x_minus_1, y+1) + self.cell_alive(x, y+1) + self.cell_alive(x+1, y+1)
 	}
 	
 }
 
-
+#[derive(Debug)]
 struct AppState {
 	board: Board,
 	simulating: bool,
@@ -119,6 +123,7 @@ fn main() {
 	const HEIGHT: u32 = 400;
 	
 	let mut app_state = AppState::new();
+//	println!("Initial app_state={:?}", app_state);
 
 	// Build the window.
 	let display = glium::glutin::WindowBuilder::new()
@@ -210,12 +215,7 @@ fn main() {
 				.color(conrod::color::WHITE)
 				.font_size(32)
 				.set(ids.title, ui);
-	/*		widget::Text::new("Start")
-				.down(5.0)
-				.color(conrod::color::WHITE)
-				.font_size(8)
-				.set(ids.info, ui
-*/				
+
 			let start_stop_label = if app_state.simulating { "Pause simulation" } else { "Start simulation"};
 			let start_stop_button = widget::Button::new()
 				.label(start_stop_label)
