@@ -115,6 +115,10 @@ impl Board {
 		self.born_rules = new_borns.clone();
 		self.borns_by_count = Board::compile_born_rules( new_borns );
 	}
+	
+	fn fill_board(&mut self, value: bool) {
+		self.data = vec![value; self.data.len()];
+	}
 }
 
 
@@ -158,6 +162,8 @@ widget_ids!(struct Ids {
 	title,
 	board,
 	start_stop_button,
+	fill_button,
+	clear_button,
 	survive_label,
 	survive_label2,
 	survive_rules,
@@ -274,6 +280,22 @@ fn main() {
 				.set(ids.start_stop_button, ui);
 			for _press in start_stop_button {
 				app_state.simulating = !app_state.simulating;
+			}
+			
+			for _press in widget::Button::new()
+				.label("Fill board")
+				.right_from(ids.start_stop_button, 4.0)
+				.label_font_size(12)
+				.set(ids.fill_button, ui) {
+				app_state.board.fill_board(true);
+			}
+			
+			for _press in widget::Button::new()
+				.label("Clear board")
+				.right_from(ids.fill_button, 4.0)
+				.label_font_size(12)
+				.set(ids.clear_button, ui) {
+				app_state.board.fill_board(false);
 			}
 			
 			make_rules_ui( &mut app_state, &ids, ui );
