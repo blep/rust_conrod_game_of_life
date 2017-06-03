@@ -4,21 +4,15 @@
 
 #[macro_use]
 extern crate conrod;
-use conrod::{widget, Borderable, Colorable, Labelable, Positionable, Sizeable, Widget};
+use conrod::{widget, position, Borderable, Colorable, Labelable, Positionable, Sizeable, Widget};
 use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::{DisplayBuild, Surface};
 use std::num::Wrapping;
 
-// nb_live = number of live neighbour among the 8 surrounding cells
-// Conway rules:
-// * Cell survives if:
-// < 2 => die
-// == 2 => survive
-// > 3 => die
-// == 3 => survive 
-//
-// * Cell is born if:
-// == 3 become alive
+// Conway rules (see https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life for fun board patterns):
+// - Cell survives if it has 2 or 3 neighbor cells alive
+// - Cell is born if it has 3 neighbor cells alive
+// - Otherwise cell dies
 
 fn conway_survives() -> Vec<usize> {
 	vec![2,3]
@@ -161,8 +155,7 @@ impl AppState {
 
 // Generate the widget identifiers.
 widget_ids!(struct Ids { 
-	title, 
-	info,
+	title,
 	board,
 	start_stop_button,
 	survive_label,
@@ -174,25 +167,32 @@ widget_ids!(struct Ids {
 });
 
 
+// UI sizes
+const RULE_SIZE: u32 = 16;
+const NB_RULE_CELLS: u32 = 9;
+const RULE_BORDER: u32 = 1;
+const BOARD_CELL_SIZE: u32 = 10;
+
+
 fn main() {
-	const WIDTH: u32 = 400;
-	const HEIGHT: u32 = 400;
 	let simulation_step_duration_ms: std::time::Duration = std::time::Duration::from_millis(160);
 	
 	let mut app_state = AppState::new(simulation_step_duration_ms);
 //	println!("Initial app_state={:?}", app_state);
 
 	// Build the window.
+	let ui_width = std::cmp::max(400, BOARD_CELL_SIZE * app_state.board.width as u32);
+	let ui_height = 30*2 + (RULE_SIZE + 4) * 2 + BOARD_CELL_SIZE * app_state.board.height as u32;
 	let display = glium::glutin::WindowBuilder::new()
 		.with_vsync()
-		.with_dimensions(WIDTH, HEIGHT)
+		.with_dimensions(ui_width, ui_height)
 		.with_title("Game of Life")
 		.with_multisampling(4)
 		.build_glium()
 		.unwrap();
 
 	// construct our `Ui`.
-	let mut ui = conrod::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
+	let mut ui = conrod::UiBuilder::new([ui_width as f64, ui_height as f64]).build();
 
 	let ids = Ids::new(ui.widget_id_generator());
 
@@ -260,21 +260,22 @@ fn main() {
 		{
 			let ui = &mut ui.set_widgets();
 			
-			// "Hello World!" in the middle of the screen.
-			widget::Text::new("Game of Life")
-				.mid_top_of(ui.window)
+			widget::Text::new("Game of Life") // Somehow button disappears if title is removed!
+				.top_left_of(ui.window)
 				.color(conrod::color::WHITE)
-				.font_size(32)
+				.font_size(16)
 				.set(ids.title, ui);
 
 			let start_stop_label = if app_state.simulating { "Pause simulation" } else { "Start simulation"};
 			let start_stop_button = widget::Button::new()
 				.label(start_stop_label)
 				.down_from(ids.title, 8.0)
+				.label_font_size(12) // Seems to be ignored and use title font size instead?!?
 				.set(ids.start_stop_button, ui);
 			for _press in start_stop_button {
 				app_state.simulating = !app_state.simulating;
 			}
+			
 			make_rules_ui( &mut app_state, &ids, ui );
 
 			make_board_ui( &mut app_state, &ids, ui );
@@ -297,17 +298,15 @@ fn make_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mu
 }
 
 fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
-	const SIZE: u32 = 16;
-	const NB: u32 = 9;
-	const BORDER: u32 = 1;
 	widget::Text::new("Cells with ")
 				.down_from(ids.start_stop_button, 8.0)
+				.x_align_to(ui.window, position::Align::Start)
 				.color(conrod::color::WHITE)
-				.font_size(SIZE)
+				.font_size(RULE_SIZE)
 				.set(ids.survive_label, ui);
-	let mut elements = widget::Matrix::new(NB as usize, 1)
+	let mut elements = widget::Matrix::new(NB_RULE_CELLS as usize, 1)
 		.right(4.0)
-		.w_h(NB as f64 * SIZE as f64, SIZE as f64)
+		.w_h(NB_RULE_CELLS as f64 * RULE_SIZE as f64, RULE_SIZE as f64)
 		.set(ids.survive_rules, ui);
 	while let Some(elem) = elements.next(ui) {
 		let (col, _row) = (elem.col, elem.row);
@@ -315,10 +314,10 @@ fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui
 		let label = col.to_string();
 		let toggle = widget::Toggle::new(enabled)
 			.rgba(0.3215686274509804, 0.7098039215686275, 0.5607843137254902, 1.0)
-			.border(BORDER as f64)
+			.border(RULE_BORDER as f64)
 			.label(&label)
 			.label_rgba(1.0,1.0,1.0,1.0)
-			.label_font_size(SIZE - 2*(BORDER+1));
+			.label_font_size(RULE_SIZE - 2*(RULE_BORDER+1));
 		if let Some(new_value) = elem.set(toggle, ui).last() {
 			let mut new_survive_rules = updated_rules( &app_state.board.survive_rules, col, new_value );
 			app_state.board.update_survive_rules( &mut new_survive_rules );
@@ -328,22 +327,19 @@ fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui
 				.right(4.0)
 				.align_top_of(ids.survive_label)
 				.color(conrod::color::WHITE)
-				.font_size(SIZE)
+				.font_size(RULE_SIZE)
 				.set(ids.survive_label2, ui);
 }
 
 fn make_born_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
-	const SIZE: u32 = 16;
-	const NB: u32 = 9;
-	const BORDER: u32 = 1;
 	widget::Text::new("Cells with ")
 				.down_from(ids.survive_label, 4.0)
 				.color(conrod::color::WHITE)
-				.font_size(SIZE)
+				.font_size(RULE_SIZE)
 				.set(ids.born_label, ui);
-	let mut elements = widget::Matrix::new(NB as usize, 1)
+	let mut elements = widget::Matrix::new(NB_RULE_CELLS as usize, 1)
 		.right(4.0)
-		.w_h(NB as f64 * SIZE as f64, SIZE as f64)
+		.w_h(NB_RULE_CELLS as f64 * RULE_SIZE as f64, RULE_SIZE as f64)
 		.set(ids.born_rules, ui);
 	while let Some(elem) = elements.next(ui) {
 		let (col, _row) = (elem.col, elem.row);
@@ -351,10 +347,10 @@ fn make_born_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &
 		let label = col.to_string();
 		let toggle = widget::Toggle::new(enabled)
 			.rgba(0.4745098039215686, 0.23529411764705882, 0.07450980392156863, 1.0)
-			.border(BORDER as f64)
+			.border(RULE_BORDER as f64)
 			.label(&label)
 			.label_rgba(1.0,1.0,1.0,1.0)
-			.label_font_size(SIZE - 2*(BORDER+1));
+			.label_font_size(RULE_SIZE - 2*(RULE_BORDER+1));
 		if let Some(new_value) = elem.set(toggle, ui).last() {
 			let mut new_born_rules = updated_rules( &app_state.board.born_rules, col, new_value );
 			app_state.board.update_born_rules( &mut new_born_rules );
@@ -364,7 +360,7 @@ fn make_born_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &
 				.right(4.0)
 				.align_top_of(ids.born_label)
 				.color(conrod::color::WHITE)
-				.font_size(SIZE)
+				.font_size(RULE_SIZE)
 				.set(ids.born_label2, ui);
 }
 
@@ -383,12 +379,11 @@ fn updated_rules(rules: &Vec<usize>, neighbor_count: usize, alive: bool) -> Vec<
 
 
 fn make_board_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) -> &'b mut conrod::UiCell<'c> /*(&'a mut AppState, &'b mut conrod::UiCell<'c>)*/ {
-	const CELL_SIZE: u32 = 10;
 	// Each cell of the board is a Toggle widget. Layout is done using a Matrix widget.
 	let (cols, rows) = (app_state.board.width, app_state.board.height);
 	let mut elements = widget::Matrix::new(cols, rows)
 		.down_from(ids.born_label, 8.0)
-		.w_h(CELL_SIZE as f64 * cols as f64, CELL_SIZE as f64 * rows as f64)
+		.w_h(BOARD_CELL_SIZE as f64 * cols as f64, BOARD_CELL_SIZE as f64 * rows as f64)
 		.set(ids.board, ui);
 
 	// The `Matrix` widget returns an `Elements`, which can be used similar to an `Iterator`.
