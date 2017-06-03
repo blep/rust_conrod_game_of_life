@@ -1,3 +1,7 @@
+// Cool setup:
+// Adds 5+6 to survive rules, starting with a filled 32x32 grid.
+
+
 #[macro_use]
 extern crate conrod;
 use conrod::{widget, Borderable, Colorable, Labelable, Positionable, Sizeable, Widget};
@@ -37,8 +41,6 @@ struct Board {
 
 impl Board {
 	fn new( width: usize, height: usize, survives: &Vec<usize>, borns: &Vec<usize> ) -> Board {
-		
-		
 		Board {
 			width: width, 
 			height: height,
@@ -119,8 +121,8 @@ impl Board {
 		self.born_rules = new_borns.clone();
 		self.borns_by_count = Board::compile_born_rules( new_borns );
 	}
-	
 }
+
 
 #[derive(Debug)]
 struct AppState {
@@ -132,8 +134,8 @@ struct AppState {
 
 impl AppState {
 	fn new( simulation_step_duration: std::time::Duration ) -> AppState {
-		const BOARD_WIDTH: usize = 16;
-		const BOARD_HEIGHT: usize = 16;
+		const BOARD_WIDTH: usize = 32;
+		const BOARD_HEIGHT: usize = 32;
 		
 		AppState {
 			board: Board::new(BOARD_WIDTH, BOARD_HEIGHT, &conway_survives(), &conway_borns()),
@@ -156,15 +158,26 @@ impl AppState {
 	}
 }
 
+
 // Generate the widget identifiers.
 widget_ids!(struct Ids { 
 	title, 
 	info,
 	board,
 	start_stop_button,
+	survive_label,
+	survive_label2,
 	survive_rules,
+	born_label,
+	born_label2,
 	born_rules,
+	header_canvas,
+	toolbar_canvas,
+	rules_canvas,
+	board_canvas,
+	master_canvas
 });
+
 
 fn main() {
 	const WIDTH: u32 = 400;
@@ -251,10 +264,21 @@ fn main() {
 		// Instantiate all widgets in the GUI.
 		{
 			let ui = &mut ui.set_widgets();
+			
+			let header_canvas = widget::Canvas::new();
+			let toolbar_canvas = widget::Canvas::new();
+			let rules_canvas = widget::Canvas::new();
+			let board_canvas = widget::Canvas::new();
+			widget::Canvas::new().flow_down( &[
+				(ids.header_canvas, header_canvas),
+				(ids.toolbar_canvas, toolbar_canvas),
+				(ids.rules_canvas, rules_canvas),
+				(ids.board_canvas, board_canvas),
+			] ).set(ids.master_canvas, ui);
 
 			// "Hello World!" in the middle of the screen.
 			widget::Text::new("Game of Life")
-				.mid_top_of(ui.window)
+				.middle_of(ids.header_canvas)
 				.color(conrod::color::WHITE)
 				.font_size(32)
 				.set(ids.title, ui);
@@ -262,7 +286,7 @@ fn main() {
 			let start_stop_label = if app_state.simulating { "Pause simulation" } else { "Start simulation"};
 			let start_stop_button = widget::Button::new()
 				.label(start_stop_label)
-				.down_from(ids.title, 5.0)
+				.middle_of(ids.toolbar_canvas)
 				.set(ids.start_stop_button, ui);
 			for _press in start_stop_button {
 				app_state.simulating = !app_state.simulating;
@@ -292,8 +316,13 @@ fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui
 	const SIZE: u32 = 16;
 	const NB: u32 = 9;
 	const BORDER: u32 = 1;
+	widget::Text::new("Cells with ")
+				.top_left_of(ids.rules_canvas)
+				.color(conrod::color::WHITE)
+				.font_size(SIZE)
+				.set(ids.survive_label, ui);
 	let mut elements = widget::Matrix::new(NB as usize, 1)
-		.down(8.0)
+		.right(4.0)
 		.w_h(NB as f64 * SIZE as f64, SIZE as f64)
 		.set(ids.survive_rules, ui);
 	while let Some(elem) = elements.next(ui) {
@@ -311,14 +340,25 @@ fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui
 			app_state.board.update_survive_rules( &mut new_survive_rules );
 		}
 	}
+	widget::Text::new("neighbor(s) survive")
+				.right(4.0)
+				.align_top_of(ids.survive_label)
+				.color(conrod::color::WHITE)
+				.font_size(SIZE)
+				.set(ids.survive_label2, ui);
 }
 
 fn make_born_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
 	const SIZE: u32 = 16;
 	const NB: u32 = 9;
 	const BORDER: u32 = 1;
+	widget::Text::new("Cells with ")
+				.down_from(ids.survive_label, 4.0)
+				.color(conrod::color::WHITE)
+				.font_size(SIZE)
+				.set(ids.born_label, ui);
 	let mut elements = widget::Matrix::new(NB as usize, 1)
-		.down(8.0)
+		.right(4.0)
 		.w_h(NB as f64 * SIZE as f64, SIZE as f64)
 		.set(ids.born_rules, ui);
 	while let Some(elem) = elements.next(ui) {
@@ -336,6 +376,12 @@ fn make_born_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &
 			app_state.board.update_born_rules( &mut new_born_rules );
 		}
 	}
+	widget::Text::new("neighbor(s) are born")
+				.right(4.0)
+				.align_top_of(ids.born_label)
+				.color(conrod::color::WHITE)
+				.font_size(SIZE)
+				.set(ids.born_label2, ui);
 }
 
 fn updated_rules(rules: &Vec<usize>, neighbor_count: usize, alive: bool) -> Vec<usize> {
@@ -353,11 +399,12 @@ fn updated_rules(rules: &Vec<usize>, neighbor_count: usize, alive: bool) -> Vec<
 
 
 fn make_board_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) -> &'b mut conrod::UiCell<'c> /*(&'a mut AppState, &'b mut conrod::UiCell<'c>)*/ {
+	const CELL_SIZE: u32 = 10;
 	// Each cell of the board is a Toggle widget. Layout is done using a Matrix widget.
 	let (cols, rows) = (app_state.board.width, app_state.board.height);
 	let mut elements = widget::Matrix::new(cols, rows)
-		.down(20.0)
-		.w_h(260.0, 260.0)
+		.middle_of(ids.board_canvas)
+		.w_h(CELL_SIZE as f64 * cols as f64, CELL_SIZE as f64 * rows as f64)
 		.set(ids.board, ui);
 
 	// The `Matrix` widget returns an `Elements`, which can be used similar to an `Iterator`.
