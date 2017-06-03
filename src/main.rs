@@ -31,26 +31,39 @@ struct Board {
 	data: Vec<bool>,
 	survives_by_count: [bool; 10], // note that the center cell is included in the count, so index is #neighbor+1
 	borns_by_count: [bool; 9],
+	survive_rules: Vec<usize>,
+	born_rules: Vec<usize>,
 }
 
 impl Board {
 	fn new( width: usize, height: usize, survives: &Vec<usize>, borns: &Vec<usize> ) -> Board {
-		let mut survives_by_count = [false; 10];
-		for count in survives.iter() {
-			survives_by_count[count+1] = true; // center cell is included in the count, hence the +1
-		}
-		let mut borns_by_count = [false; 9];
-		for count in borns.iter() {
-			borns_by_count[count+0] = true;
-		}
+		
 		
 		Board {
 			width: width, 
 			height: height,
 			data: vec![true; width* height],
-			survives_by_count: survives_by_count,
-			borns_by_count: borns_by_count,
+			survives_by_count: Board::compile_survive_rules(&survives),
+			borns_by_count: Board::compile_born_rules(&borns),
+			survive_rules: survives.clone(),
+			born_rules: borns.clone(),
 		}
+	}
+	
+	fn compile_survive_rules( survives: &Vec<usize> ) -> [bool; 10] {
+		let mut survives_by_count = [false; 10];
+		for count in survives.iter() {
+			survives_by_count[count+1] = true; // center cell is included in the count, hence the +1
+		}
+		survives_by_count
+	}
+	
+	fn compile_born_rules( borns: &Vec<usize> ) -> [bool; 9] {
+		let mut borns_by_count = [false; 9];
+		for count in borns.iter() {
+			borns_by_count[count+0] = true;
+		}
+		borns_by_count
 	}
 	
 	fn get(&self, x: usize, y: usize) -> bool {
@@ -96,6 +109,16 @@ impl Board {
 		self.cell_alive(x_minus_1, y) + self.cell_alive(x+1, y) +
 		self.cell_alive(x_minus_1, y+1) + self.cell_alive(x, y+1) + self.cell_alive(x+1, y+1)
 	}
+
+	fn update_survive_rules( &mut self, new_survives: &mut Vec<usize> ) {
+		self.survive_rules = new_survives.clone();
+		self.survives_by_count = Board::compile_survive_rules( new_survives );
+	}
+
+	fn update_born_rules( &mut self, new_borns: &mut Vec<usize> ) {
+		self.born_rules = new_borns.clone();
+		self.borns_by_count = Board::compile_born_rules( new_borns );
+	}
 	
 }
 
@@ -103,26 +126,52 @@ impl Board {
 struct AppState {
 	board: Board,
 	simulating: bool,
+	simulation_step_duration: std::time::Duration,
+	last_simulation_update:  std::time::Instant,
 }
 
 impl AppState {
-	fn new() -> AppState {
-		const BOARD_WIDTH: usize = 8;
-		const BOARD_HEIGHT: usize = 8;
+	fn new( simulation_step_duration: std::time::Duration ) -> AppState {
+		const BOARD_WIDTH: usize = 16;
+		const BOARD_HEIGHT: usize = 16;
 		
 		AppState {
 			board: Board::new(BOARD_WIDTH, BOARD_HEIGHT, &conway_survives(), &conway_borns()),
 			simulating: false,
+			simulation_step_duration: simulation_step_duration,
+			last_simulation_update: std::time::Instant::now()
+		}
+	}
+	
+	fn advance_simulation(&mut self) -> bool {
+		let now = std::time::Instant::now();
+		let duration_since_last_update = now.duration_since(self.last_simulation_update);
+		if duration_since_last_update >= self.simulation_step_duration {
+			self.last_simulation_update = now;
+			self.board.advance_simulation();
+			true
+		} else {
+			false
 		}
 	}
 }
 
+// Generate the widget identifiers.
+widget_ids!(struct Ids { 
+	title, 
+	info,
+	board,
+	start_stop_button,
+	survive_rules,
+	born_rules,
+});
 
 fn main() {
 	const WIDTH: u32 = 400;
 	const HEIGHT: u32 = 400;
+	let simulation_step_duration_ms: std::time::Duration = std::time::Duration::from_millis(160);
 	
-	let mut app_state = AppState::new();
+	let mut app_state = AppState::new(simulation_step_duration_ms);
 //	println!("Initial app_state={:?}", app_state);
 
 	// Build the window.
@@ -137,13 +186,6 @@ fn main() {
 	// construct our `Ui`.
 	let mut ui = conrod::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
 
-	// Generate the widget identifiers.
-	widget_ids!(struct Ids { 
-		title, 
-		info,
-		board,
-		start_stop_button
-	});
 	let ids = Ids::new(ui.widget_id_generator());
 
 	// Add a `Font` to the `Ui`'s `font::Map` from file.
@@ -202,7 +244,7 @@ fn main() {
 		}
 		
 		if app_state.simulating {
-			app_state.board.advance_simulation();
+			app_state.advance_simulation();
 			ui_needs_update = true;
 		}
 
@@ -225,39 +267,9 @@ fn main() {
 			for _press in start_stop_button {
 				app_state.simulating = !app_state.simulating;
 			}
+			make_rules_ui( &mut app_state, &ids, ui );
 
-
-			// A demonstration using widget_matrix to easily draw a matrix of any kind of widget.
-			let (cols, rows) = (8, 8);
-			let mut elements = widget::Matrix::new(cols, rows)
-				.down(20.0)
-				.w_h(260.0, 260.0)
-				.set(ids.board, ui);
-
-			// The `Matrix` widget returns an `Elements`, which can be used similar to an `Iterator`.
-			while let Some(elem) = elements.next(ui) {
-				let (col, row) = (elem.col, elem.row);
-
-				// Color effect for fun.
-				let (r, g, b, a) = (
-					0.5 + (elem.col as f32 / cols as f32) / 2.0,
-					0.75,
-					1.0 - (elem.row as f32 / rows as f32) / 2.0,
-					1.0
-				);
-
-				// We can use `Element`s to instantiate any kind of widget we like.
-				// The `Element` does all of the positioning and sizing work for us.
-				// Here, we use the `Element` to `set` a `Toggle` widget for us.
-				let toggle = widget::Toggle::new(app_state.board.get(col, row))
-					.rgba(r, g, b, a)
-					.border(1.0);
-				if let Some(new_value) = elem.set(toggle, ui).last() {
-					app_state.board.set(col, row, new_value);
-				}
-			}
-
-			
+			make_board_ui( &mut app_state, &ids, ui );
 		}
 
 		// Render the `Ui` and then display it on the screen.
@@ -269,4 +281,95 @@ fn main() {
 			target.finish().unwrap();
 		}
 	}
+}
+
+fn make_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
+	make_survive_rules_ui( app_state, ids, ui );
+	make_born_rules_ui( app_state, ids, ui );
+}
+
+fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
+	let (cols, rows) = (9, 1);
+	let mut elements = widget::Matrix::new(cols, rows)
+		.down(8.0)
+		.w_h(9.0*12.0, 12.0)
+		.set(ids.survive_rules, ui);
+	while let Some(elem) = elements.next(ui) {
+		let (col, _row) = (elem.col, elem.row);
+		let enabled = app_state.board.survive_rules.contains(&col);
+		let toggle = widget::Toggle::new(enabled)
+			.rgba(0.3215686274509804, 0.7098039215686275, 0.5607843137254902, 1.0)
+			.border(1.0);
+		if let Some(new_value) = elem.set(toggle, ui).last() {
+			let mut new_survive_rules = updated_rules( &app_state.board.survive_rules, col, new_value );
+			app_state.board.update_survive_rules( &mut new_survive_rules );
+		}
+	}
+}
+
+fn make_born_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
+	let (cols, rows) = (9, 1);
+	let mut elements = widget::Matrix::new(cols, rows)
+		.down(8.0)
+		.w_h(9.0*12.0, 12.0)
+		.set(ids.born_rules, ui);
+	while let Some(elem) = elements.next(ui) {
+		let (col, _row) = (elem.col, elem.row);
+		let enabled = app_state.board.born_rules.contains(&col);
+		let toggle = widget::Toggle::new(enabled)
+			.rgba(0.4745098039215686, 0.23529411764705882, 0.07450980392156863, 1.0)
+			.border(1.0);
+		if let Some(new_value) = elem.set(toggle, ui).last() {
+			let mut new_born_rules = updated_rules( &app_state.board.born_rules, col, new_value );
+			app_state.board.update_born_rules( &mut new_born_rules );
+		}
+	}
+}
+
+fn updated_rules(rules: &Vec<usize>, neighbor_count: usize, alive: bool) -> Vec<usize> {
+	let mut new_rules = rules.clone();
+	if !alive {
+		new_rules.retain( |count| *count != neighbor_count );
+	} else {
+		if !new_rules.contains( &neighbor_count ) {
+			new_rules.push( neighbor_count );
+		}
+	}
+	new_rules
+}
+
+
+
+fn make_board_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) -> &'b mut conrod::UiCell<'c> /*(&'a mut AppState, &'b mut conrod::UiCell<'c>)*/ {
+	// Each cell of the board is a Toggle widget. Layout is done using a Matrix widget.
+	let (cols, rows) = (app_state.board.width, app_state.board.height);
+	let mut elements = widget::Matrix::new(cols, rows)
+		.down(20.0)
+		.w_h(260.0, 260.0)
+		.set(ids.board, ui);
+
+	// The `Matrix` widget returns an `Elements`, which can be used similar to an `Iterator`.
+	while let Some(elem) = elements.next(ui) {
+		let (col, row) = (elem.col, elem.row);
+
+		// Color effect for fun.
+		let (r, g, b, a) = (
+			0.5 + (elem.col as f32 / cols as f32) / 2.0,
+			0.75,
+			1.0 - (elem.row as f32 / rows as f32) / 2.0,
+			1.0
+		);
+
+		// We can use `Element`s to instantiate any kind of widget we like.
+		// The `Element` does all of the positioning and sizing work for us.
+		// Here, we use the `Element` to `set` a `Toggle` widget for us.
+		let toggle = widget::Toggle::new(app_state.board.get(col, row))
+			.rgba(r, g, b, a)
+			.border(1.0);
+		if let Some(new_value) = elem.set(toggle, ui).last() {
+			app_state.board.set(col, row, new_value);
+		}
+	}
+	
+	ui
 }
