@@ -9,6 +9,10 @@ use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::{DisplayBuild, Surface};
 use std::num::Wrapping;
 
+const BOARD_WIDTH: usize = 32;
+const BOARD_HEIGHT: usize = 32;
+
+
 // Conway rules (see https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life for fun board patterns):
 // - Cell survives if it has 2 or 3 neighbor cells alive
 // - Cell is born if it has 3 neighbor cells alive
@@ -132,9 +136,6 @@ struct AppState {
 
 impl AppState {
 	fn new( simulation_step_duration: std::time::Duration ) -> AppState {
-		const BOARD_WIDTH: usize = 32;
-		const BOARD_HEIGHT: usize = 32;
-		
 		AppState {
 			board: Board::new(BOARD_WIDTH, BOARD_HEIGHT, &conway_survives(), &conway_borns()),
 			simulating: false,
@@ -187,7 +188,7 @@ fn main() {
 //	println!("Initial app_state={:?}", app_state);
 
 	// Build the window.
-	let ui_width = std::cmp::max(400, BOARD_CELL_SIZE * app_state.board.width as u32);
+	let ui_width = std::cmp::max(400, BOARD_CELL_SIZE * app_state.board.width as u32 + 4);
 	let ui_height = 30*2 + (RULE_SIZE + 4) * 2 + BOARD_CELL_SIZE * app_state.board.height as u32;
 	let display = glium::glutin::WindowBuilder::new()
 		.with_vsync()
