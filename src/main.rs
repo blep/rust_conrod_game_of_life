@@ -171,11 +171,6 @@ widget_ids!(struct Ids {
 	born_label,
 	born_label2,
 	born_rules,
-	header_canvas,
-	toolbar_canvas,
-	rules_canvas,
-	board_canvas,
-	master_canvas
 });
 
 
@@ -265,20 +260,9 @@ fn main() {
 		{
 			let ui = &mut ui.set_widgets();
 			
-			let header_canvas = widget::Canvas::new();
-			let toolbar_canvas = widget::Canvas::new();
-			let rules_canvas = widget::Canvas::new();
-			let board_canvas = widget::Canvas::new();
-			widget::Canvas::new().flow_down( &[
-				(ids.header_canvas, header_canvas),
-				(ids.toolbar_canvas, toolbar_canvas),
-				(ids.rules_canvas, rules_canvas),
-				(ids.board_canvas, board_canvas),
-			] ).set(ids.master_canvas, ui);
-
 			// "Hello World!" in the middle of the screen.
 			widget::Text::new("Game of Life")
-				.middle_of(ids.header_canvas)
+				.mid_top_of(ui.window)
 				.color(conrod::color::WHITE)
 				.font_size(32)
 				.set(ids.title, ui);
@@ -286,7 +270,7 @@ fn main() {
 			let start_stop_label = if app_state.simulating { "Pause simulation" } else { "Start simulation"};
 			let start_stop_button = widget::Button::new()
 				.label(start_stop_label)
-				.middle_of(ids.toolbar_canvas)
+				.down_from(ids.title, 8.0)
 				.set(ids.start_stop_button, ui);
 			for _press in start_stop_button {
 				app_state.simulating = !app_state.simulating;
@@ -317,7 +301,7 @@ fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui
 	const NB: u32 = 9;
 	const BORDER: u32 = 1;
 	widget::Text::new("Cells with ")
-				.top_left_of(ids.rules_canvas)
+				.down_from(ids.start_stop_button, 8.0)
 				.color(conrod::color::WHITE)
 				.font_size(SIZE)
 				.set(ids.survive_label, ui);
@@ -403,7 +387,7 @@ fn make_board_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mu
 	// Each cell of the board is a Toggle widget. Layout is done using a Matrix widget.
 	let (cols, rows) = (app_state.board.width, app_state.board.height);
 	let mut elements = widget::Matrix::new(cols, rows)
-		.middle_of(ids.board_canvas)
+		.down_from(ids.born_label, 8.0)
 		.w_h(CELL_SIZE as f64 * cols as f64, CELL_SIZE as f64 * rows as f64)
 		.set(ids.board, ui);
 
