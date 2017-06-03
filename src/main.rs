@@ -289,17 +289,23 @@ fn make_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mu
 }
 
 fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
-	let (cols, rows) = (9, 1);
-	let mut elements = widget::Matrix::new(cols, rows)
+	const SIZE: u32 = 16;
+	const NB: u32 = 9;
+	const BORDER: u32 = 1;
+	let mut elements = widget::Matrix::new(NB as usize, 1)
 		.down(8.0)
-		.w_h(9.0*12.0, 12.0)
+		.w_h(NB as f64 * SIZE as f64, SIZE as f64)
 		.set(ids.survive_rules, ui);
 	while let Some(elem) = elements.next(ui) {
 		let (col, _row) = (elem.col, elem.row);
 		let enabled = app_state.board.survive_rules.contains(&col);
+		let label = col.to_string();
 		let toggle = widget::Toggle::new(enabled)
 			.rgba(0.3215686274509804, 0.7098039215686275, 0.5607843137254902, 1.0)
-			.border(1.0);
+			.border(BORDER as f64)
+			.label(&label)
+			.label_rgba(1.0,1.0,1.0,1.0)
+			.label_font_size(SIZE - 2*(BORDER+1));
 		if let Some(new_value) = elem.set(toggle, ui).last() {
 			let mut new_survive_rules = updated_rules( &app_state.board.survive_rules, col, new_value );
 			app_state.board.update_survive_rules( &mut new_survive_rules );
@@ -308,17 +314,23 @@ fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui
 }
 
 fn make_born_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
-	let (cols, rows) = (9, 1);
-	let mut elements = widget::Matrix::new(cols, rows)
+	const SIZE: u32 = 16;
+	const NB: u32 = 9;
+	const BORDER: u32 = 1;
+	let mut elements = widget::Matrix::new(NB as usize, 1)
 		.down(8.0)
-		.w_h(9.0*12.0, 12.0)
+		.w_h(NB as f64 * SIZE as f64, SIZE as f64)
 		.set(ids.born_rules, ui);
 	while let Some(elem) = elements.next(ui) {
 		let (col, _row) = (elem.col, elem.row);
 		let enabled = app_state.board.born_rules.contains(&col);
+		let label = col.to_string();
 		let toggle = widget::Toggle::new(enabled)
 			.rgba(0.4745098039215686, 0.23529411764705882, 0.07450980392156863, 1.0)
-			.border(1.0);
+			.border(BORDER as f64)
+			.label(&label)
+			.label_rgba(1.0,1.0,1.0,1.0)
+			.label_font_size(SIZE - 2*(BORDER+1));
 		if let Some(new_value) = elem.set(toggle, ui).last() {
 			let mut new_born_rules = updated_rules( &app_state.board.born_rules, col, new_value );
 			app_state.board.update_born_rules( &mut new_born_rules );
