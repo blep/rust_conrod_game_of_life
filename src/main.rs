@@ -8,6 +8,12 @@ use conrod::{widget, position, Borderable, Colorable, Labelable, Positionable, S
 use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::{DisplayBuild, Surface};
 use std::num::Wrapping;
+use std::error::Error;
+use std::io::{BufRead,Write};
+
+extern crate nfd;
+use nfd::Response;
+
 
 const BOARD_WIDTH: usize = 32;
 const BOARD_HEIGHT: usize = 32;
@@ -123,6 +129,106 @@ impl Board {
     fn fill_board(&mut self, value: bool) {
         self.data = vec![value; self.data.len()];
     }
+    
+    fn save_to_file( &self, path: &String ) -> Result<(),std::io::Error> {
+        let mut file = std::fs::File::create(path)?;
+        
+        write!(file, "board_size {} {}\n", self.width, self.height )?;
+        Board::write_rules(&mut file, "survives", &self.survive_rules)?;
+        Board::write_rules(&mut file, "borns", &self.born_rules)?;
+        write!(file, "board\n")?;
+        for row in 0..self.height {
+            for col in 0..self.width {
+                write!(file, "{}", if self.get(col, row) { 'X' } else { ' ' })?;
+            }
+            write!(file, "\n")?;
+        }
+        Ok(())
+    }
+
+    fn write_rules(file: &mut std::fs::File, name: &str, counts: &Vec<usize>) -> Result<(),std::io::Error> {
+        write!(file, "{}", name)?;
+        for count in counts {
+            write!(file, " {}", count)?;
+        }
+        write!(file, "\n")?;
+        Ok(())
+    }
+    
+    fn load_from_file(path: &String) -> Result<Board,std::io::Error> {
+        let file = match std::fs::File::open(path) {
+            Ok(file) => file,
+            Err(why) => return Err( std::io::Error::new(why.kind(), format!("Failed to open file '{}'. {}", path, why) ) ), // ensure path is in the error message...
+        };
+        let file = std::io::BufReader::new(file);
+        let mut row: usize = 0;
+        let mut board = None::<Board>;
+        let mut board_size: Option<(usize, usize)> = None;
+        let mut survives = Vec::new();
+        let mut borns = Vec::new();
+        for line in file.lines() {
+            let line = line?;
+            if let Some(ref mut board) = board {
+                if !line.trim().is_empty() {
+                    let (width, height) = board_size.unwrap();
+                    if row >= height {
+                        return Board::make_error( format!("Too many rows provided in board data. Trying to set cells for row={} but board height is {}", row+1, height).as_str() );
+                    }
+                    for (col, c) in line.chars().enumerate() {
+                        if c.is_whitespace() {
+                            continue;
+                        }
+                        if col >= width {
+                            return Board::make_error( format!("Too many cells provided on board row. Trying to set cell at row={}, col={} but board width is {}", col+1, row+1, width).as_str() );
+                        }
+                        board.set(col, row, true);
+                    }
+                }
+                row += 1;
+            } else {
+                if !line.trim().is_empty() {
+                    let mut parts = line.split(' ');
+                    let name = parts.next().unwrap(); // string is not blank so guaranted to have at least one item
+                    let mut values = Vec::new();
+                    for part in parts {
+                        match part.parse::<usize>() {
+                            Ok(value) => values.push(value),
+                            Err(why) => return Board::make_error( format!("Expected an unsigned integer but got {}. {}", part, why).as_str() ),
+                        }
+                    }
+                    match name {
+                        "board_size" => {
+                            if values.len() != 2 { 
+                                return Board::make_error("board_size require width and height values");
+                            }
+                            board_size = Some((values[0], values[1]))
+                        },
+                        "survives" => survives = values,
+                        "borns" => borns = values,
+                        "board" => {
+                            if board_size.is_none() {
+                                return Board::make_error("board_size not specified");
+                            }
+                            let board_size = board_size.unwrap();
+                            let mut new_board = Board::new( board_size.0, board_size.1, &survives, &borns );
+                            new_board.fill_board(false);
+                            board = Some(new_board);
+                        },
+                        _ => return Board::make_error( format!("unknown field: {}.", name).as_str() ),
+                    }
+                } 
+            }
+        }
+        
+        match board {
+            Some(board) => Ok(board),
+            None => Board::make_error( "board data not found" ),
+        }
+    }
+    
+    fn make_error(message: &str) -> Result<Board,std::io::Error> {
+        Err( std::io::Error::new(std::io::ErrorKind::Other, message) )
+    }
 }
 
 
@@ -132,6 +238,7 @@ struct AppState {
     simulating: bool,
     simulation_step_duration: std::time::Duration,
     last_simulation_update:  std::time::Instant,
+    last_path: Option<String>,
 }
 
 impl AppState {
@@ -140,7 +247,8 @@ impl AppState {
             board: Board::new(BOARD_WIDTH, BOARD_HEIGHT, &conway_survives(), &conway_borns()),
             simulating: false,
             simulation_step_duration: simulation_step_duration,
-            last_simulation_update: std::time::Instant::now()
+            last_simulation_update: std::time::Instant::now(),
+            last_path: None,
         }
     }
     
@@ -155,6 +263,14 @@ impl AppState {
             false
         }
     }
+    
+    fn load_from_file(&mut self, path: &String) -> Result<(),std::io::Error> {
+        let board: Board = Board::load_from_file(path)?;
+        
+        
+        self.board = board;
+        Ok(())
+    }
 }
 
 
@@ -165,6 +281,8 @@ widget_ids!(struct Ids {
     start_stop_button,
     fill_button,
     clear_button,
+    load_button,
+    save_button,
     survive_label,
     survive_label2,
     survive_rules,
@@ -189,7 +307,7 @@ fn main() {
 
     // Build the window.
     let ui_width = std::cmp::max(400, BOARD_CELL_SIZE * app_state.board.width as u32 + 4);
-    let ui_height = 30*2 + (RULE_SIZE + 4) * 2 + BOARD_CELL_SIZE * app_state.board.height as u32;
+    let ui_height = 28*3 + (RULE_SIZE + 4) * 2 + BOARD_CELL_SIZE * app_state.board.height as u32;
     let display = glium::glutin::WindowBuilder::new()
         .with_vsync()
         .with_dimensions(ui_width, ui_height)
@@ -273,31 +391,7 @@ fn main() {
                 .font_size(16)
                 .set(ids.title, ui);
 
-            let start_stop_label = if app_state.simulating { "Pause simulation" } else { "Start simulation"};
-            let start_stop_button = widget::Button::new()
-                .label(start_stop_label)
-                .down_from(ids.title, 8.0)
-                .label_font_size(12) // Seems to be ignored and use title font size instead?!?
-                .set(ids.start_stop_button, ui);
-            for _press in start_stop_button {
-                app_state.simulating = !app_state.simulating;
-            }
-            
-            for _press in widget::Button::new()
-                .label("Fill board")
-                .right_from(ids.start_stop_button, 4.0)
-                .label_font_size(12)
-                .set(ids.fill_button, ui) {
-                app_state.board.fill_board(true);
-            }
-            
-            for _press in widget::Button::new()
-                .label("Clear board")
-                .right_from(ids.fill_button, 4.0)
-                .label_font_size(12)
-                .set(ids.clear_button, ui) {
-                app_state.board.fill_board(false);
-            }
+            make_toolbar_ui( &mut app_state, &ids, ui );
             
             make_rules_ui( &mut app_state, &ids, ui );
 
@@ -315,6 +409,106 @@ fn main() {
     }
 }
 
+fn make_toolbar_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
+    let start_stop_label = if app_state.simulating { "Pause simulation" } else { "Start simulation"};
+    let start_stop_button = widget::Button::new()
+        .label(start_stop_label)
+        .down_from(ids.title, 8.0)
+        .label_font_size(12) // Seems to be ignored and use title font size instead?!?
+        .set(ids.start_stop_button, ui);
+    for _press in start_stop_button {
+        app_state.simulating = !app_state.simulating;
+    }
+    
+    for _press in widget::Button::new()
+        .label("Fill board")
+        .right_from(ids.start_stop_button, 4.0)
+        .label_font_size(12)
+        .set(ids.fill_button, ui) {
+        app_state.board.fill_board(true);
+    }
+    
+    for _press in widget::Button::new()
+        .label("Clear board")
+        .right_from(ids.fill_button, 4.0)
+        .label_font_size(12)
+        .set(ids.clear_button, ui) {
+        app_state.board.fill_board(false);
+    }
+    
+    for _press in widget::Button::new()
+        .label("Load")
+        .down_from(ids.start_stop_button, 4.0)
+        .label_font_size(12)
+        .set(ids.load_button, ui) {
+        load_board_action(app_state);
+    }
+    
+    for _press in widget::Button::new()
+        .label("Save")
+        .right_from(ids.load_button, 4.0)
+        .label_font_size(12)
+        .set(ids.save_button, ui) {
+        save_board_action(app_state);
+    }
+    
+}
+
+fn get_default_path<'a>(app_state: &'a mut AppState) -> String {
+    // default_path must use O.S. separator otherwise nfd panic!
+    let default_path: String = match app_state.last_path {
+        Some(ref path) => path.clone(),
+        None => {
+            let mut path = std::env::current_dir().expect("Valid current directory");
+            path.push("boards");
+            path.push("test1.gameoflife");
+            path.as_path().to_str().unwrap().to_string()
+        },
+    };
+    default_path
+}
+
+fn load_board_action<'a>(app_state: &'a mut AppState) {
+    let default_path = get_default_path(app_state);
+    let result = nfd::dialog().filter("gameoflife").default_path(default_path.as_str()).open().unwrap_or_else(|e| {
+        panic!(e);
+    });
+
+    match result {
+        Response::Okay(file_path) => {
+            match app_state.load_from_file( &file_path ) {
+                Ok(_) => (),
+                Err(why) => println!("Failed to save file: {}", why.description()),
+            }
+            app_state.last_path = Some(file_path);
+        },
+        Response::Cancel => println!("User canceled"),
+        _ => (),
+    }
+}
+
+fn save_board_action<'a>(app_state: &'a mut AppState) {
+    // default_path must use O.S. separator otherwise nfd panic!
+    let default_path = get_default_path(app_state);
+    let result = nfd::dialog_save().filter("gameoflife").default_path(default_path.as_str()).open().unwrap_or_else(|e| {
+        panic!(e);
+    });
+
+    match result {
+        Response::Okay(file_path) => {
+            println!("File path = {:?}", file_path);
+            match app_state.board.save_to_file( &file_path ) {
+                Ok(_) => (),
+                Err(why) => println!("Failed to save file: {}", why.description()),
+            };
+            app_state.last_path = Some(file_path);
+        },
+        Response::Cancel => println!("User canceled"),
+        _ => (),
+    }
+}
+
+
 fn make_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
     make_survive_rules_ui( app_state, ids, ui );
     make_born_rules_ui( app_state, ids, ui );
@@ -322,7 +516,7 @@ fn make_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mu
 
 fn make_survive_rules_ui<'a, 'b, 'c>( app_state: &'a mut AppState, ids: &Ids, ui: &'b mut conrod::UiCell<'c>) {
     widget::Text::new("Cells with ")
-                .down_from(ids.start_stop_button, 8.0)
+                .down_from(ids.load_button, 8.0)
                 .x_align_to(ui.window, position::Align::Start)
                 .color(conrod::color::WHITE)
                 .font_size(RULE_SIZE)

@@ -7,3 +7,4 @@ authors = ["Baptiste Lepilleur <baptiste.lepilleur@gmail.com>"]
 conrod = { version = "0.52.0", features = ["glium", "winit"] }
 glium="0.16.0"
 winit="0.5.9"  
+nfd = "0.0.4"

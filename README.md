@@ -12,7 +12,9 @@ Use [Conrod](https://github.com/PistonDevelopers/conrod) for the User Interfance
 
 # Screenshots
 
-![Game of Life with survives with 1,2,5 neighbor cells and born with 3 neighbor cells](screenshots/game_of_life_125_3.png?raw=true)
+![Game of Life with survives with 1,2,5 neighbor cells and born with 3 neighbor cells](screenshots/flower2_125_3.png?raw=true)
+
+![Game of Life classic "Gosper glider gun"](screenshots/gosper_glider_gun_23_3.png?raw=true)
 
 # Assets
 
