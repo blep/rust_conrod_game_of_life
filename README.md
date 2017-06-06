@@ -16,6 +16,12 @@ Use [Conrod](https://github.com/PistonDevelopers/conrod) for the User Interfance
 
 ![Game of Life classic "Gosper glider gun"](screenshots/gosper_glider_gun_23_3.png?raw=true)
 
+# Building and running
+
+```
+cargo run --release
+```
+
 # Assets
 
 * Use [Google Noto Fonts](https://www.google.com/get/noto/) (Apache2)
